@@ -38,7 +38,7 @@ public class TrafficGuard
     static string GuardPassword = "admin123";
     static string authToken = Guid.NewGuid().ToString("N");
     static string VipFile = @"C:\traffic-guard\vip.txt";
-    static HashSet<string> vipIPs = new HashSet<string>();
+    static ConcurrentDictionary<string, byte> vipIPs = new ConcurrentDictionary<string, byte>();
 
     public static void Main(string[] args)
     {
@@ -53,7 +53,7 @@ public class TrafficGuard
         catch { }
         try
         {
-            if (File.Exists(VipFile)) foreach (string line in File.ReadAllLines(VipFile)) { string ip = line.Trim(); if (ip.Length > 0) vipIPs.Add(ip); }
+            if (File.Exists(VipFile)) foreach (string line in File.ReadAllLines(VipFile)) { string ip = line.Trim(); if (ip.Length > 0) vipIPs.TryAdd(ip, 0); }
         }
         catch { }
 
@@ -178,7 +178,7 @@ public class TrafficGuard
             web.UserAgent = ua;
             web.Headers["X-Forwarded-For"] = ip;
             web.Headers["X-Real-IP"] = ip;
-            if (vipIPs.Contains(ip)) web.Headers["X-VIP"] = "1";
+            if (vipIPs.ContainsKey(ip)) web.Headers["X-VIP"] = "1";
             web.Accept = req.Headers["Accept"];
             if (req.ContentType != null) web.ContentType = req.ContentType;
 
@@ -350,7 +350,7 @@ public class TrafficGuard
         if (ctx.Request.QueryString["vip_err"] == "1")
             sb.Append("<p style=\"color:#ff6b6b;text-align:center;margin:0 0 10px;\">⚠ IP 格式无效，请输入合法 IP 地址（如 1.2.3.4）</p>");
         sb.Append("<table><tr><th>IP</th><th>操作</th></tr>");
-        foreach (string vip in vipIPs)
+        foreach (string vip in vipIPs.Keys)
             sb.Append("<tr><td class=\"mono\">" + HtmlEnc(vip) + "</td><td><a href=\"/__guard__/vip?action=remove&ip=" + Uri.EscapeDataString(vip) + "\">移除</a></td></tr>");
         if (vipIPs.Count == 0) sb.Append("<tr><td colspan=\"2\">暂无 VIP 用户</td></tr>");
         sb.Append("</table>");
@@ -483,8 +483,8 @@ public class TrafficGuard
             if (System.Net.IPAddress.TryParse(ip, out addr))
             {
                 valid = true;
-                if (action == "add") { vipIPs.Add(ip); SaveVips(); }
-                else if (action == "remove") { vipIPs.Remove(ip); SaveVips(); }
+                if (action == "add") { vipIPs.TryAdd(ip, 0); SaveVips(); }
+                else if (action == "remove") { byte _; vipIPs.TryRemove(ip, out _); SaveVips(); }
             }
         }
         string loc = (action == "add" && !valid) ? "/__guard__/?vip_err=1" : "/__guard__/";
@@ -495,7 +495,7 @@ public class TrafficGuard
 
     static void SaveVips()
     {
-        try { File.WriteAllLines(VipFile, vipIPs.ToArray()); } catch { }
+        try { File.WriteAllLines(VipFile, vipIPs.Keys.ToArray()); } catch { }
     }
 
     static string GetFormValue(string body, string key)
