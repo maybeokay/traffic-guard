@@ -147,6 +147,8 @@ public class TrafficGuard
             web.ReadWriteTimeout = 30000;
             web.AllowAutoRedirect = false;
             web.UserAgent = ua;
+            web.Headers["X-Forwarded-For"] = ip;
+            web.Headers["X-Real-IP"] = ip;
             web.Accept = req.Headers["Accept"];
             if (req.ContentType != null) web.ContentType = req.ContentType;
 
