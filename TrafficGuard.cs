@@ -363,13 +363,13 @@ public class TrafficGuard
             {
                 string[] cl = File.ReadAllLines(cf);
                 int cnt = 0;
-                sb.Append("<table><tr><th>昵称</th><th>内容</th><th>地域</th><th>时间</th><th>操作</th></tr>");
+                sb.Append("<table><tr><th>昵称</th><th>内容</th><th>地域</th><th>IP</th><th>时间</th><th>操作</th></tr>");
                 for (int i = 0; i < cl.Length; i++)
                 {
                     string l = cl[i].Trim();
                     if (l.Length == 0 || l[0] != '{') continue;
                     cnt++;
-                    sb.Append("<tr><td>" + HtmlEnc(JsonField(l, "nick")) + "</td><td>" + HtmlEnc(JsonField(l, "text")) + "</td><td>" + HtmlEnc(JsonField(l, "region")) + "</td><td class=\"mono\">" + JsonField(l, "time") + "</td><td><a href=\"/__guard__/comment?action=delete&idx=" + i + "\" onclick=\"return confirm('确认删除该留言？');\">删除</a></td></tr>");
+                    sb.Append("<tr><td>" + HtmlEnc(JsonField(l, "nick")) + "</td><td>" + HtmlEnc(JsonField(l, "text")) + "</td><td>" + HtmlEnc(JsonField(l, "region")) + "</td><td class=\"mono\">" + HtmlEnc(JsonField(l, "ip")) + "</td><td class=\"mono\">" + JsonField(l, "time") + "</td><td><a href=\"/__guard__/comment?action=delete&idx=" + i + "\" onclick=\"return confirm('确认删除该留言？');\">删除</a></td></tr>");
                 }
                 sb.Append("</table>");
                 if (cnt == 0) sb.Append("<p>暂无留言</p>");
