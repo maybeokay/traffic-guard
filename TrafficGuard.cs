@@ -386,6 +386,7 @@ public class TrafficGuard
 
         byte[] buf = Encoding.UTF8.GetBytes(sb.ToString());
         ctx.Response.StatusCode = 200;
+        ctx.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
         ctx.Response.ContentType = "text/html; charset=utf-8";
         ctx.Response.ContentLength64 = buf.Length;
         ctx.Response.OutputStream.Write(buf, 0, buf.Length);
@@ -462,6 +463,7 @@ public class TrafficGuard
         sb.Append("</div></body></html>");
         byte[] buf = Encoding.UTF8.GetBytes(sb.ToString());
         ctx.Response.StatusCode = 200;
+        ctx.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
         ctx.Response.ContentType = "text/html; charset=utf-8";
         ctx.Response.ContentLength64 = buf.Length;
         ctx.Response.OutputStream.Write(buf, 0, buf.Length);
