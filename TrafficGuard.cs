@@ -347,12 +347,14 @@ public class TrafficGuard
         sb.Append("</div>");
 
         sb.Append("<div class=\"sec\"><h2>VIP 用户 IP（访问 sun-site 显示爱心特效 + 留言 VIP 标识）</h2>");
+        if (ctx.Request.QueryString["vip_err"] == "1")
+            sb.Append("<p style=\"color:#ff6b6b;text-align:center;margin:0 0 10px;\">⚠ IP 格式无效，请输入合法 IP 地址（如 1.2.3.4）</p>");
         sb.Append("<table><tr><th>IP</th><th>操作</th></tr>");
         foreach (string vip in vipIPs)
             sb.Append("<tr><td class=\"mono\">" + HtmlEnc(vip) + "</td><td><a href=\"/__guard__/vip?action=remove&ip=" + Uri.EscapeDataString(vip) + "\">移除</a></td></tr>");
         if (vipIPs.Count == 0) sb.Append("<tr><td colspan=\"2\">暂无 VIP 用户</td></tr>");
         sb.Append("</table>");
-        sb.Append("<div class=\"row\"><form method=\"get\" action=\"/__guard__/vip\"><input type=\"hidden\" name=\"action\" value=\"add\"><input type=\"text\" name=\"ip\" placeholder=\"添加 VIP IP\"><button type=\"submit\">添加</button></form></div>");
+        sb.Append("<div class=\"row\"><form method=\"get\" action=\"/__guard__/vip\"><input type=\"hidden\" name=\"action\" value=\"add\"><input type=\"text\" name=\"ip\" placeholder=\"添加 VIP IP（如 1.2.3.4）\" maxlength=\"45\"><button type=\"submit\">添加</button></form></div>");
         sb.Append("</div>");
 
         sb.Append("<div class=\"sec\"><h2>留言管理</h2>");
@@ -474,12 +476,19 @@ public class TrafficGuard
     {
         string action = ctx.Request.QueryString["action"];
         string ip = ctx.Request.QueryString["ip"];
+        bool valid = false;
         if (!string.IsNullOrEmpty(action) && !string.IsNullOrEmpty(ip))
         {
-            if (action == "add") { vipIPs.Add(ip); SaveVips(); }
-            else if (action == "remove") { vipIPs.Remove(ip); SaveVips(); }
+            System.Net.IPAddress addr;
+            if (System.Net.IPAddress.TryParse(ip, out addr))
+            {
+                valid = true;
+                if (action == "add") { vipIPs.Add(ip); SaveVips(); }
+                else if (action == "remove") { vipIPs.Remove(ip); SaveVips(); }
+            }
         }
-        ctx.Response.RedirectLocation = "/__guard__/";
+        string loc = (action == "add" && !valid) ? "/__guard__/?vip_err=1" : "/__guard__/";
+        ctx.Response.RedirectLocation = loc;
         ctx.Response.StatusCode = 302;
         ctx.Response.Close();
     }
