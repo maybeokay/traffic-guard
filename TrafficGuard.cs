@@ -35,11 +35,27 @@ public class TrafficGuard
     static ConcurrentDictionary<string, DateTime> manualBlock = new ConcurrentDictionary<string, DateTime>();
     static ConcurrentQueue<string> recent = new ConcurrentQueue<string>();
 
+    static string GuardPassword = "admin123";
+    static string authToken = Guid.NewGuid().ToString("N");
+    static string VipFile = @"C:\traffic-guard\vip.txt";
+    static HashSet<string> vipIPs = new HashSet<string>();
+
     public static void Main(string[] args)
     {
         if (args.Length > 0) int.TryParse(args[0], out Port);
         if (args.Length > 1) Backend = args[1];
         try { Directory.CreateDirectory(LogDir); } catch { }
+        try
+        {
+            string pf = Path.Combine(LogDir, "password.txt");
+            if (File.Exists(pf)) { string[] pl = File.ReadAllLines(pf); if (pl.Length > 0 && !string.IsNullOrWhiteSpace(pl[0])) GuardPassword = pl[0].Trim(); }
+        }
+        catch { }
+        try
+        {
+            if (File.Exists(VipFile)) foreach (string line in File.ReadAllLines(VipFile)) { string ip = line.Trim(); if (ip.Length > 0) vipIPs.Add(ip); }
+        }
+        catch { }
 
         HttpListener l = new HttpListener();
         l.Prefixes.Add("http://+:" + Port + "/");
@@ -79,8 +95,19 @@ public class TrafficGuard
                 return;
             }
 
-            if (path == "/__guard__" || path == "/__guard__/") { Dashboard(ctx); return; }
-            if (path == "/__guard__/block") { BlockAction(ctx); return; }
+            if (path == "/__guard__/login") { HandleLogin(ctx); return; }
+            if (path == "/__guard__/logout") { HandleLogout(ctx); return; }
+            if (path == "/__guard__" || path == "/__guard__/")
+            {
+                if (!IsAuthed(ctx)) { ServeLoginPage(ctx, false); return; }
+                Dashboard(ctx); return;
+            }
+            if (path == "/__guard__/block" || path == "/__guard__/vip")
+            {
+                if (!IsAuthed(ctx)) { ServeLoginPage(ctx, false); return; }
+                if (path == "/__guard__/block") BlockAction(ctx); else VipAction(ctx);
+                return;
+            }
 
             Interlocked.Increment(ref totalReq);
             Proxy(ctx);
@@ -149,6 +176,7 @@ public class TrafficGuard
             web.UserAgent = ua;
             web.Headers["X-Forwarded-For"] = ip;
             web.Headers["X-Real-IP"] = ip;
+            if (vipIPs.Contains(ip)) web.Headers["X-VIP"] = "1";
             web.Accept = req.Headers["Accept"];
             if (req.ContentType != null) web.ContentType = req.ContentType;
 
@@ -316,6 +344,15 @@ public class TrafficGuard
         sb.Append("<div class=\"row\"><form method=\"get\" action=\"/__guard__/block\"><input type=\"hidden\" name=\"action\" value=\"block\"><input type=\"text\" name=\"ip\" placeholder=\"手动封禁 IP\"><button class=\"danger\" type=\"submit\">封禁</button></form></div>");
         sb.Append("</div>");
 
+        sb.Append("<div class=\"sec\"><h2>VIP 用户 IP（访问 sun-site 显示爱心特效 + 留言 VIP 标识）</h2>");
+        sb.Append("<table><tr><th>IP</th><th>操作</th></tr>");
+        foreach (string vip in vipIPs)
+            sb.Append("<tr><td class=\"mono\">" + HtmlEnc(vip) + "</td><td><a href=\"/__guard__/vip?action=remove&ip=" + Uri.EscapeDataString(vip) + "\">移除</a></td></tr>");
+        if (vipIPs.Count == 0) sb.Append("<tr><td colspan=\"2\">暂无 VIP 用户</td></tr>");
+        sb.Append("</table>");
+        sb.Append("<div class=\"row\"><form method=\"get\" action=\"/__guard__/vip\"><input type=\"hidden\" name=\"action\" value=\"add\"><input type=\"text\" name=\"ip\" placeholder=\"添加 VIP IP\"><button type=\"submit\">添加</button></form></div>");
+        sb.Append("</div>");
+
         sb.Append("</body></html>");
 
         byte[] buf = Encoding.UTF8.GetBytes(sb.ToString());
@@ -338,6 +375,101 @@ public class TrafficGuard
         ctx.Response.StatusCode = 302;
         ctx.Response.RedirectLocation = "/__guard__/";
         ctx.Response.Close();
+    }
+
+    static bool IsAuthed(HttpListenerContext ctx)
+    {
+        Cookie c = ctx.Request.Cookies["guard_auth"];
+        return c != null && c.Value == authToken;
+    }
+
+    static void HandleLogin(HttpListenerContext ctx)
+    {
+        string password = "";
+        if (ctx.Request.HttpMethod == "POST")
+        {
+            try
+            {
+                using (StreamReader sr = new StreamReader(ctx.Request.InputStream, Encoding.UTF8))
+                    password = GetFormValue(sr.ReadToEnd(), "password");
+            }
+            catch { }
+        }
+        if (password == GuardPassword)
+        {
+            ctx.Response.SetCookie(new Cookie("guard_auth", authToken, "/", ""));
+            ctx.Response.RedirectLocation = "/__guard__/";
+            ctx.Response.StatusCode = 302;
+        }
+        else
+        {
+            ServeLoginPage(ctx, true);
+            return;
+        }
+        ctx.Response.Close();
+    }
+
+    static void HandleLogout(HttpListenerContext ctx)
+    {
+        ctx.Response.SetCookie(new Cookie("guard_auth", "", "/", "") { Expires = DateTime.Now.AddDays(-1) });
+        ctx.Response.RedirectLocation = "/__guard__/";
+        ctx.Response.StatusCode = 302;
+        ctx.Response.Close();
+    }
+
+    static void ServeLoginPage(HttpListenerContext ctx, bool error)
+    {
+        StringBuilder sb = new StringBuilder();
+        sb.Append("<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>流量卫士 · 登录</title><style>");
+        sb.Append("body{font-family:-apple-system,Segoe UI,Microsoft YaHei,sans-serif;background:#0a0f1a;color:#dde;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}");
+        sb.Append(".box{background:#131a2b;border:1px solid #22304a;border-radius:14px;padding:28px 26px;width:300px;}");
+        sb.Append("h1{font-size:20px;color:#fff;margin:0 0 18px;text-align:center;}");
+        sb.Append("input{width:100%;box-sizing:border-box;background:#0a0f1a;border:1px solid #2a3a5a;color:#dde;padding:10px 12px;border-radius:8px;font-size:14px;margin-bottom:12px;}");
+        sb.Append("button{width:100%;background:#7fe3ff;color:#0a0f1a;border:none;padding:10px;border-radius:8px;font-weight:700;cursor:pointer;font-size:14px;}");
+        sb.Append(".err{color:#ff6b6b;font-size:12px;text-align:center;margin-bottom:10px;}");
+        sb.Append("</style></head><body><div class=\"box\"><h1>🛡 流量卫士</h1>");
+        if (error) sb.Append("<div class=\"err\">密码错误</div>");
+        sb.Append("<form method=\"post\" action=\"/__guard__/login\"><input type=\"password\" name=\"password\" placeholder=\"管理密码\" autofocus><button type=\"submit\">登 录</button></form>");
+        sb.Append("</div></body></html>");
+        byte[] buf = Encoding.UTF8.GetBytes(sb.ToString());
+        ctx.Response.StatusCode = 200;
+        ctx.Response.ContentType = "text/html; charset=utf-8";
+        ctx.Response.ContentLength64 = buf.Length;
+        ctx.Response.OutputStream.Write(buf, 0, buf.Length);
+        ctx.Response.Close();
+    }
+
+    static void VipAction(HttpListenerContext ctx)
+    {
+        string action = ctx.Request.QueryString["action"];
+        string ip = ctx.Request.QueryString["ip"];
+        if (!string.IsNullOrEmpty(action) && !string.IsNullOrEmpty(ip))
+        {
+            if (action == "add") { vipIPs.Add(ip); SaveVips(); }
+            else if (action == "remove") { vipIPs.Remove(ip); SaveVips(); }
+        }
+        ctx.Response.RedirectLocation = "/__guard__/";
+        ctx.Response.StatusCode = 302;
+        ctx.Response.Close();
+    }
+
+    static void SaveVips()
+    {
+        try { File.WriteAllLines(VipFile, vipIPs.ToArray()); } catch { }
+    }
+
+    static string GetFormValue(string body, string key)
+    {
+        if (string.IsNullOrEmpty(body)) return "";
+        foreach (string pair in body.Split('&'))
+        {
+            int i = pair.IndexOf('=');
+            if (i < 0) continue;
+            string k = pair.Substring(0, i);
+            string v = pair.Substring(i + 1);
+            if (k == key) { try { return Uri.UnescapeDataString(v.Replace("+", " ")); } catch { return v; } }
+        }
+        return "";
     }
 
     static string HtmlEnc(string s)
