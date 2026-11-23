@@ -102,10 +102,12 @@ public class TrafficGuard
                 if (!IsAuthed(ctx)) { ServeLoginPage(ctx, false); return; }
                 Dashboard(ctx); return;
             }
-            if (path == "/__guard__/block" || path == "/__guard__/vip")
+            if (path == "/__guard__/block" || path == "/__guard__/vip" || path == "/__guard__/comment")
             {
                 if (!IsAuthed(ctx)) { ServeLoginPage(ctx, false); return; }
-                if (path == "/__guard__/block") BlockAction(ctx); else VipAction(ctx);
+                if (path == "/__guard__/block") BlockAction(ctx);
+                else if (path == "/__guard__/vip") VipAction(ctx);
+                else CommentAction(ctx);
                 return;
             }
 
@@ -353,6 +355,33 @@ public class TrafficGuard
         sb.Append("<div class=\"row\"><form method=\"get\" action=\"/__guard__/vip\"><input type=\"hidden\" name=\"action\" value=\"add\"><input type=\"text\" name=\"ip\" placeholder=\"添加 VIP IP\"><button type=\"submit\">添加</button></form></div>");
         sb.Append("</div>");
 
+        sb.Append("<div class=\"sec\"><h2>留言管理</h2>");
+        try
+        {
+            string cf = @"C:\sunsite\comments.jsonl";
+            if (File.Exists(cf))
+            {
+                string[] cl = File.ReadAllLines(cf);
+                int cnt = 0;
+                sb.Append("<table><tr><th>昵称</th><th>内容</th><th>地域</th><th>时间</th><th>操作</th></tr>");
+                for (int i = 0; i < cl.Length; i++)
+                {
+                    string l = cl[i].Trim();
+                    if (l.Length == 0 || l[0] != '{') continue;
+                    cnt++;
+                    sb.Append("<tr><td>" + HtmlEnc(JsonField(l, "nick")) + "</td><td>" + HtmlEnc(JsonField(l, "text")) + "</td><td>" + HtmlEnc(JsonField(l, "region")) + "</td><td class=\"mono\">" + JsonField(l, "time") + "</td><td><a href=\"/__guard__/comment?action=delete&idx=" + i + "\" onclick=\"return confirm('确认删除该留言？');\">删除</a></td></tr>");
+                }
+                sb.Append("</table>");
+                if (cnt == 0) sb.Append("<p>暂无留言</p>");
+            }
+            else
+            {
+                sb.Append("<p>暂无留言</p>");
+            }
+        }
+        catch { sb.Append("<p>留言读取失败</p>"); }
+        sb.Append("</div>");
+
         sb.Append("</body></html>");
 
         byte[] buf = Encoding.UTF8.GetBytes(sb.ToString());
@@ -470,6 +499,43 @@ public class TrafficGuard
             if (k == key) { try { return Uri.UnescapeDataString(v.Replace("+", " ")); } catch { return v; } }
         }
         return "";
+    }
+
+    static string JsonField(string json, string field)
+    {
+        string key = "\"" + field + "\"";
+        int i = json.IndexOf(key, StringComparison.Ordinal);
+        if (i < 0) return "";
+        i = json.IndexOf(':', i + key.Length);
+        if (i < 0) return "";
+        i++;
+        while (i < json.Length && (json[i] == ' ' || json[i] == '"')) i++;
+        int end = json.IndexOf('"', i);
+        if (end < 0) end = json.Length;
+        return json.Substring(i, end - i);
+    }
+
+    static void CommentAction(HttpListenerContext ctx)
+    {
+        string action = ctx.Request.QueryString["action"];
+        string idxStr = ctx.Request.QueryString["idx"];
+        int idx;
+        if (action == "delete" && int.TryParse(idxStr, out idx))
+        {
+            try
+            {
+                string cf = @"C:\sunsite\comments.jsonl";
+                if (File.Exists(cf))
+                {
+                    List<string> lines = new List<string>(File.ReadAllLines(cf));
+                    if (idx >= 0 && idx < lines.Count) { lines.RemoveAt(idx); File.WriteAllLines(cf, lines.ToArray()); }
+                }
+            }
+            catch { }
+        }
+        ctx.Response.RedirectLocation = "/__guard__/";
+        ctx.Response.StatusCode = 302;
+        ctx.Response.Close();
     }
 
     static string HtmlEnc(string s)
