@@ -97,7 +97,7 @@ public class TrafficGuard
 
             if (path == "/__guard__/login") { HandleLogin(ctx); return; }
             if (path == "/__guard__/logout") { HandleLogout(ctx); return; }
-            if (path == "/__guard__" || path == "/__guard__/")
+            if (path == "/__guard__" || path == "/__guard__/" || path == "/_guard_" || path == "/_guard_/")
             {
                 if (!IsAuthed(ctx)) { ServeLoginPage(ctx, false); return; }
                 Dashboard(ctx); return;
